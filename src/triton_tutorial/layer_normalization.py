@@ -233,8 +233,10 @@ class LayerNorm(torch.autograd.Function):
             GROUP_SIZE_M=GROUP_SIZE_M,  #
             num_warps=ctx.num_warps,
         )
+
         def grid(meta):
             return [triton.cdiv(N, meta["BLOCK_SIZE_N"])]
+
         # accumulate partial sums in separate kernel
         _layer_norm_bwd_dwdb[grid](
             _dw,
@@ -318,14 +320,20 @@ def bench_layer_norm(M, N, dtype, provider, mode="backward", eps=1e-5, device="c
 
     # forward pass
     if mode == "forward":
-        gbps = lambda ms: 2 * x.numel() * x.element_size() / ms * 1e-6
+
+        def gbps(ms):
+            return 2 * x.numel() * x.element_size() / ms * 1e-06
+
         ms, min_ms, max_ms = triton.testing.do_bench(
             y_fwd, quantiles=quantiles, rep=500
         )
     # backward pass
     if mode == "backward":
         y = y_fwd()
-        gbps = lambda ms: 3 * x.numel() * x.element_size() / ms * 1e-6  # noqa: F811, E704
+
+        def gbps(ms):
+            return 3 * x.numel() * x.element_size() / ms * 1e-06  # noqa: F811, E704
+
         ms, min_ms, max_ms = triton.testing.do_bench(
             lambda: y.backward(dy, retain_graph=True),
             quantiles=quantiles,
